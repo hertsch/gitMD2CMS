@@ -339,7 +339,7 @@ class Access {
       $name = stristr($md_file['file_name'], '.md', true);
       $page_id = $addPage->Add($name, $md_file['title'], $parent_id, self::unsanitizeText($md_file['description']),
           self::unsanitizeText($md_file['keywords']), self::unsanitizeText($md_file['content_md']),
-          self::unsanitizeText($md_file['content_html']), $md_file['id']);
+          self::unsanitizeText($md_file['content_html']), $md_file['id'], $md_file['position']);
 echo "parent: $parent_id -> $page_id<br>";
     }
     return true;

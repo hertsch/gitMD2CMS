@@ -112,7 +112,7 @@ class AddPage {
     return $text;
   } // unsanitizeText()
 
-  public function Add($name, $title, $parent, $description, $keywords, $text, $html, $md_id,
+  public function Add($name, $title, $parent, $description, $keywords, $text, $html, $md_id, $position,
       $visibility='public', $admin_groups=array(1), $viewing_groups=array(1)) {
     global $database;
 
@@ -193,7 +193,7 @@ class AddPage {
       // the page already exists, update the contents!
       $data = $query->fetchRow(MYSQL_ASSOC);
       $updatePage = new UpdatePage();
-      $updatePage->Update($data['page_id'], $title, $name, $description, $keywords, $text, $html, $md_id);
+      $updatePage->Update($data['page_id'], $title, $name, $description, $keywords, $text, $html, $md_id, $position);
       return true;
     }
 

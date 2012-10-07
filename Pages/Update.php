@@ -104,7 +104,7 @@ class UpdatePage {
   } // unsanitizeText()
 
 
-  public function Update($page_id, $page_title, $menu_title, $description, $keywords, $text, $html, $md_id) {
+  public function Update($page_id, $page_title, $menu_title, $description, $keywords, $text, $html, $md_id, $position) {
     global $database;
 
     $page_title = mysql_real_escape_string(strip_tags($page_title));
