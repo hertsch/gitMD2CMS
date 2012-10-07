@@ -112,7 +112,8 @@ class AddPage {
     return $text;
   } // unsanitizeText()
 
-  public function Add($title, $parent, $description, $keywords, $text, $html, $visibility='public', $admin_groups=array(1), $viewing_groups=array(1)) {
+  public function Add($name, $title, $parent, $description, $keywords, $text, $html, $md_id,
+      $visibility='public', $admin_groups=array(1), $viewing_groups=array(1)) {
     global $database;
 
     $admin = new \admin('Pages', 'pages_add', false, false);
@@ -157,7 +158,7 @@ class AddPage {
 
     // create the filename
     if ($parent == '0') {
-      $link = '/'.page_filename($title);
+      $link = '/'.page_filename($name);
       // Dateinamen 'index' und 'intro' umbenennen um Kollisionen zu vermeiden
       if (($link == '/index') || ($link == '/intro')) {
         $link .= '_0';
@@ -174,7 +175,7 @@ class AddPage {
         $parent_section .= page_filename($parent_title).'/';
       }
       if ($parent_section == '/') $parent_section = '';
-      $page_filename = page_filename($title);
+      $page_filename = page_filename($name);
       $page_filename = str_replace('_', '-', $page_filename);
       $link = '/'. $parent_section. $page_filename;
       $filename = WB_PATH. PAGES_DIRECTORY. '/'. $parent_section. $page_filename. PAGE_EXTENSION;
@@ -192,7 +193,7 @@ class AddPage {
       // the page already exists, update the contents!
       $data = $query->fetchRow(MYSQL_ASSOC);
       $updatePage = new UpdatePage();
-      $updatePage->Update($data['page_id'], $title, $description, $keywords, $text, $html);
+      $updatePage->Update($data['page_id'], $title, $name, $description, $keywords, $text, $html, $md_id);
       return true;
     }
 
@@ -221,7 +222,7 @@ class AddPage {
 
     $new_page = array(
         'page_title' => $title,
-        'menu_title' => $title,
+        'menu_title' => $name,
         'parent' => $parent,
         'template' => $template,
         'target' => '_top',
@@ -287,6 +288,20 @@ class AddPage {
     if ($database->is_error()) {
       $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
     }
+
+    // update the gitMD2CMS table
+    $SQL = "SELECT `parent`,`root_parent`,`level` FROM `".self::$table_prefix."pages` WHERE `page_id`='$page_id'";
+    if (null == ($query = $database->query($SQL)))
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+    $page = $query->fetchRow(MYSQL_ASSOC);
+
+    $SQL = "UPDATE `".self::$table_prefix."mod_gitmd2cms_contents` SET `page_id`='$page_id', ".
+        "`page_parent`='{$page['parent']}', `page_root_parent`='{$page['root_parent']}', ".
+        "`page_level`='{$page['level']}' WHERE `id`='$md_id'";
+    $database->query($SQL);
+    if ($database->is_error())
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+
     return $page_id;
   } // Add()
 

@@ -104,17 +104,19 @@ class UpdatePage {
   } // unsanitizeText()
 
 
-  public function Update($page_id, $title, $description, $keywords, $text, $html) {
+  public function Update($page_id, $page_title, $menu_title, $description, $keywords, $text, $html, $md_id) {
     global $database;
 
-    $title = mysql_real_escape_string(strip_tags($title));
+    $page_title = mysql_real_escape_string(strip_tags($page_title));
     $description = mysql_real_escape_string(strip_tags($description));
     $keywords = mysql_real_escape_string(strip_tags($keywords));
     $text = self::sanitizeVariable($text);
     $html = self::sanitizeVariable($html);
 
     // update the page informations
-    $SQL = "UPDATE `".self::$table_prefix."pages` SET `page_title`='$title', `description`='$description', `keywords`='$keywords' WHERE `page_id`='$page_id'";
+    $SQL = "UPDATE `".self::$table_prefix."pages` SET `page_title`='$page_title', ".
+      "`description`='$description', `keywords`='$keywords', `menu_title`='$menu_title' ".
+      "WHERE `page_id`='$page_id'";
     $database->query($SQL);
     if ($database->is_error())
       self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
@@ -133,6 +135,20 @@ class UpdatePage {
     $database->query($SQL);
     if ($database->is_error())
       self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+
+    // update the gitMD2CMS table
+    $SQL = "SELECT `parent`,`root_parent`,`level` FROM `".self::$table_prefix."pages` WHERE `page_id`='$page_id'";
+    if (null == ($query = $database->query($SQL)))
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+    $page = $query->fetchRow(MYSQL_ASSOC);
+
+    $SQL = "UPDATE `".self::$table_prefix."mod_gitmd2cms_contents` SET `page_id`='$page_id', ".
+      "`page_parent`='{$page['parent']}', `page_root_parent`='{$page['root_parent']}', ".
+      "`page_level`='{$page['level']}' WHERE `id`='$md_id'";
+    $database->query($SQL);
+    if ($database->is_error())
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+
   } // Update()
 
 

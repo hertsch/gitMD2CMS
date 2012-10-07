@@ -13,10 +13,12 @@ namespace gitMD2CMS\GitHub;
 
 use gitMD2CMS\Pages\DeletePage;
 use gitMD2CMS\Pages\AddPage;
+use gitMD2CMS\Pages\PagePositions;
 
 // need Page functions
 require_once 'Pages/Delete.php';
 require_once 'Pages/Add.php';
+require_once 'Pages/Position.php';
 
 // need the libMarkdown
 require_once WB_PATH.'/modules/lib_markdown/standard/markdown.php';
@@ -302,6 +304,12 @@ class Access {
     return true;
   } // readMDfile()
 
+  /**
+   * Create the HTML WYSIWYG pages from the GitHub data stored in the table
+   *
+   * @param array $config
+   * @return boolean
+   */
   protected function createPages($config) {
     global $database;
 
@@ -328,7 +336,10 @@ class Access {
         // parent does not exists!
         continue;
       }
-      $page_id = $addPage->Add($md_file['title'], $parent_id, self::unsanitizeText($md_file['description']), self::unsanitizeText($md_file['keywords']), self::unsanitizeText($md_file['content_md']), self::unsanitizeText($md_file['content_html']));
+      $name = stristr($md_file['file_name'], '.md', true);
+      $page_id = $addPage->Add($name, $md_file['title'], $parent_id, self::unsanitizeText($md_file['description']),
+          self::unsanitizeText($md_file['keywords']), self::unsanitizeText($md_file['content_md']),
+          self::unsanitizeText($md_file['content_html']), $md_file['id']);
 echo "parent: $parent_id -> $page_id<br>";
     }
     return true;
@@ -345,6 +356,8 @@ echo "parent: $parent_id -> $page_id<br>";
       exit($this->getError());
     // init the function to delete pages
     $deletePage = new DeletePage();
+    // init the class to change the page positions
+    $pagePositions = new PagePositions();
 
     // loop through the content settings and get the informations from GitHub
     foreach (self::$config['content'] as $content_group) {
@@ -377,7 +390,10 @@ echo "parent: $parent_id -> $page_id<br>";
       }
       // create pages in the CMS
       $this->createPages($content_group);
+      // set the page positions
+      $pagePositions->Process($content_group);
     }
+
     exit('ok');
   } // action()
 
