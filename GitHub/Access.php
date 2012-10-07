@@ -12,9 +12,11 @@
 namespace gitMD2CMS\GitHub;
 
 use gitMD2CMS\Pages\DeletePage;
+use gitMD2CMS\Pages\AddPage;
 
-// need Page function
+// need Page functions
 require_once 'Pages/Delete.php';
+require_once 'Pages/Add.php';
 
 // need the libMarkdown
 require_once WB_PATH.'/modules/lib_markdown/standard/markdown.php';
@@ -27,6 +29,12 @@ class Access {
   protected static $config_file = 'config.json';
   // array for the configuration settings
   protected static $config = null;
+  // active repository: name
+  protected static $repository_name = null;
+  // active repository: root
+  protected static $repository_root = null;
+  // active repository: already existing pages
+  protected static $repository_pages = null;
 
   /**
    * Set self::$error to $error
@@ -57,6 +65,45 @@ class Access {
     return (bool) !empty(self::$error);
   } // isError
 
+  /**
+   * Sanitize variables and prepare them for saving in a MySQL record
+   *
+   * @param mixed $item
+   * @return mixed
+   */
+  public static function sanitizeVariable($item) {
+    if (!is_array($item)) {
+      // undoing 'magic_quotes_gpc = On' directive
+      if (get_magic_quotes_gpc())
+        $item = stripcslashes($item);
+      $item = self::sanitizeText($item);
+    }
+    return $item;
+  } // sanitizeVariable()
+
+  /**
+   * Sanitize a text variable and prepare ist for saving in a MySQL record
+   *
+   * @param string $text
+   * @return string
+   */
+  protected static function sanitizeText($text) {
+    $text = str_replace(array("<",">","\"","'"), array("&lt;","&gt;","&quot;","&#039;"), $text);
+    $text = mysql_real_escape_string($text);
+    return $text;
+  } // sanitizeText()
+
+  /**
+   * Unsanitize a text variable and prepare it for output
+   *
+   * @param string $text
+   * @return string
+   */
+  public static function unsanitizeText($text) {
+    $text = stripcslashes($text);
+    $text = str_replace(array("&lt;","&gt;","&quot;","&#039;"), array("<",">","\"","'"), $text);
+    return $text;
+  } // unsanitizeText()
 
   /**
    * Get the configuration from the config.json file
@@ -65,7 +112,7 @@ class Access {
    */
   protected function getConfiguration() {
     if (!file_exists(WB_PATH.'/modules/gitMD2CMS/config.json')) {
-      $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Missing the configuration file /modules/gitMD2CMS/config.json!'));
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Missing the configuration file /modules/gitMD2CMS/config.json!'));
       return false;
     }
     // read the configuration file into an array
@@ -125,12 +172,11 @@ class Access {
    * Read a GitHub directory recursivly and get all files into an array
    *
    * @param string $cmd
-   * @param integer $level
    * @param string $path
    * @param array reference $entries
    * @return boolean
    */
-  protected static function readDirectory($cmd, $level, $path, &$entries) {
+  protected static function readDirectory($cmd, $path, &$entries) {
     $result = self::gitGet($cmd.$path);
     if (!isset($result['meta']['status']))
       // got no status information from GitHub
@@ -140,31 +186,153 @@ class Access {
       self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, sprintf('Github error: %s - command: %s', $result['data']['message'], $cmd)));
     foreach ($result['data'] as $entry) {
       if ($entry['type'] == 'dir') {
-        self::readDirectory($cmd, $level+1, '/'.$entry['path'], $entries);
+        // read the directory content
+        self::readDirectory($cmd, '/'.$entry['path'], $entries);
       }
       else {
         // we accept only files with .md extension
-        if (false === ($title = stristr($entry['name'], '.md', true))) continue;
-        $ord = 9999;
-        if (false !== strpos($title, '__')) {
-          list($ord, $title) = explode('__', $title, 2);
-        }
-        $directory = substr($entry['path'], 0, strrpos($entry['path'], '/'));
-        $entries[] = array(
-            'type' => $entry['type'],
-            'file_name' => $entry['name'],
-            'file_path' => $entry['path'],
-            'file_sha' => $entry['sha'],
-            'file_size' => $entry['size'],
-            'directory' => $directory,
-            'title' => $title,
-            'order' => $ord,
-            'level' => $level
-            );
+        if (false === stristr($entry['name'], '.md', true)) continue;
+        // read the MD file to the database
+        self::readMDfile($cmd, $entry['path'], $entry['sha']);
       }
     }
     return true;
   } // readDirectory()
+
+  /**
+   * Get the content from the GitHub MD file into the database
+   *
+   * @param string $cmd
+   * @param string $path
+   * @param string $sha
+   * @return boolean
+   */
+  protected static function readMDfile($cmd, $path, $sha) {
+    global $database;
+
+    $update = false;
+    // first we check if this entry already exists
+    if (isset(self::$repository_pages[$path])) {
+      $update = true;
+      // delete the entry from the array for the existing pages
+      if (self::$repository_pages[$path] == $sha) {
+        // nothing to do - the entry exists and SHA is identical
+        unset(self::$repository_pages[$path]);
+        return true;
+      }
+      unset(self::$repository_pages[$path]);
+    }
+
+    $content = self::gitGet($cmd.'/'.$path);
+
+    if (!isset($content['meta']['status']))
+      // got no status information from GitHub
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Got no status information from GitHub, perhaps an connection error.'));
+    if ($content['meta']['status'] <> 200)
+      // gitHub status is not ok!
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, sprintf('Github error: %s - command: %s', $content['data']['message'], $cmd.'/'.$path)));
+    if (!isset($content['data']['content']))
+      // missing the content
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Got no content from GitHub for: '.$cmd.'/'.$path));
+    // the content is base 64 encoded ...
+    $text = base64_decode($content['data']['content']);
+    // change from Markdown to HTML
+    $html = Markdown($text);
+
+    $file = array(
+        'name' => self::$repository_name,
+        'root' => self::$repository_root,
+        'file_name' => $content['data']['name'],
+        'file_path' => $content['data']['path'],
+        'file_sha' => $content['data']['sha'],
+        'directory' => substr($content['data']['path'], 0, strrpos($content['data']['path'], '/')),
+        'title' => self::sanitizeText(stristr($content['data']['name'], '.md', true)),
+        'description' => '',
+        'keywords' => '',
+        'position' => '9999',
+        'content_md' => self::sanitizeVariable($text),
+        'content_html' => self::sanitizeVariable($html)
+        );
+
+    // catch possible commands in the form <!--COMMAND::VALUE-->
+    $commands = array('title','description','keywords','position');
+    foreach ($commands as $command) {
+      if (preg_match(sprintf('/<!--%s::(.*?)-->/', $command), $text, $matches)) {
+        if (isset($matches[1])) {
+          // set the value of the command to the file array
+          $file[$command] = self::sanitizeText($matches[1]);
+        }
+      }
+    }
+
+    if ($update) {
+      // update the already existing record
+      $SQL = "UPDATE `".self::$config['table_prefix']."mod_gitmd2cms_contents` SET ";
+      $start = true;
+      // build the query string
+      foreach ($file as $key => $value) {
+        if ($start)
+          $start = false;
+        else
+          $SQL .= ',';
+        $SQL .= sprintf("`%s`='%s'", $key, $value);
+      }
+      $SQL .= " WHERE `file_path`='$path'";
+    }
+    else {
+      // add a new record
+      $start = true;
+      $keys = '';
+      $values = '';
+      foreach ($file as $key => $value) {
+        if ($start)
+          $start = false;
+        else {
+          $keys .= ',';
+          $values .= ',';
+        }
+        $keys .= sprintf("`%s`", $key);
+        $values .= sprintf("'%s'", $value);
+      }
+      $SQL = "INSERT INTO `".self::$config['table_prefix']."mod_gitmd2cms_contents` ($keys) VALUES ($values)";
+    }
+    $database->query($SQL);
+    if ($database->is_error())
+      $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+    return true;
+  } // readMDfile()
+
+  protected function createPages($config) {
+    global $database;
+
+    // init the class to add pages
+    $addPage = new AddPage();
+
+    $SQL = "SELECT * FROM `".self::$config['table_prefix']."mod_gitmd2cms_contents` WHERE `name`='{$config['repository']['name']}' AND `root`='{$config['repository']['root']}'";
+    if (null == ($query = $database->query($SQL)))
+      $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+
+    while (false !== ($md_file = $query->fetchRow(MYSQL_ASSOC))) {
+      // loop through all records and create pages if needed
+      $directory = substr($md_file['directory'], strlen($config['repository']['root']));
+      $directory = self::removeLeadingAndTrailingChar($directory, '/');
+      $parent_link = '/'.$config['cms']['root'];
+      if (!empty($directory))
+        $parent_link .= '/'.$directory;
+      // get the parent page_id
+      $SQL = "SELECT `page_id` FROM `".self::$config['table_prefix']."pages` WHERE `link`='$parent_link'";
+      $parent_id = $database->get_one($SQL, MYSQL_ASSOC);
+      if ($database->is_error())
+        $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+      if ($parent_id < 1) {
+        // parent does not exists!
+        continue;
+      }
+      $page_id = $addPage->Add($md_file['title'], $parent_id, self::unsanitizeText($md_file['description']), self::unsanitizeText($md_file['keywords']), self::unsanitizeText($md_file['content_md']), self::unsanitizeText($md_file['content_html']));
+echo "parent: $parent_id -> $page_id<br>";
+    }
+    return true;
+  } // createPages()
 
   /**
    * Action handler for the class Access
@@ -175,6 +343,8 @@ class Access {
     // get the configuration
     if (!$this->getConfiguration())
       exit($this->getError());
+    // init the function to delete pages
+    $deletePage = new DeletePage();
 
     // loop through the content settings and get the informations from GitHub
     foreach (self::$config['content'] as $content_group) {
@@ -182,76 +352,32 @@ class Access {
       if (!isset($content_group['repository']['owner']) || !isset($content_group['repository']['name']))
         $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Missing "owner" and/or "name" informations for the repository!'));
       // get the repository root
-      $repository_root = (isset($content_group['repository']['root']) && !empty($content_group['repository']['root'])) ? $content_group['repository']['root'] : '';
-      $repository_root = self::removeLeadingAndTrailingChar($repository_root, '/');
-      // set the page level to zero (root)
-      $level = 0;
-      // read the files and directories from the first level
-      $cmd = '/repos/'.$content_group['repository']['owner'].'/'.$content_group['repository']['name'].'/contents';
-      $result = array();
-      $this->readDirectory($cmd, $level, $repository_root, $result);
+      self::$repository_root = (isset($content_group['repository']['root']) && !empty($content_group['repository']['root'])) ? $content_group['repository']['root'] : '';
+      self::$repository_root = self::removeLeadingAndTrailingChar(self::$repository_root, '/');
+      // get the repository name
+      self::$repository_name = $content_group['repository']['name'];
 
-      $existing_pages = array();
+      // get the already existing pages into an array
+      self::$repository_pages = array();
       $SQL = "SELECT `file_path`, `file_sha` FROM `".self::$config['table_prefix']."mod_gitmd2cms_contents` WHERE `name`='{$content_group['repository']['name']}' AND `root`='{$content_group['repository']['root']}'";
       if (null == ($query = $database->query($SQL)))
         $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
       while (false !== ($page = $query->fetchRow(MYSQL_ASSOC)))
-        $existing_pages[$page['file_path']] = $page['file_sha'];
+        self::$repository_pages[$page['file_path']] = $page['file_sha'];
 
-      // loop through the array and get the contents
-      foreach ($result as $file) {
-        $update = false;
-        // first we check if this entry already exists
-        if (isset($existing_pages[$file['file_path']]) && ($existing_pages[$file['file_path']] == $file['file_sha'])) {
-          // delete the entry from the array for the existing pages
-          unset($existing_pages[$file['file_path']]);
-          continue;
-        }
-
-        $content = $this->gitGet($cmd.'/'.$file['file_path']);
-
-        if (!isset($content['meta']['status']))
-          // got no status information from GitHub
-          self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Got no status information from GitHub, perhaps an connection error.'));
-        if ($content['meta']['status'] <> 200)
-          // gitHub status is not ok!
-          self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, sprintf('Github error: %s - command: %s', $content['data']['message'], $cmd.'/'.$file['file_path'])));
-        if (!isset($content['data']['content']))
-          // missing the content
-          self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Got no content from GitHub for: '.$cmd.'/'.$file['file_path']));
-        // the content is base 64 encoded ...
-        $text = base64_decode($content['data']['content']);
-        // change from Markdown to HTML
-        $text = Markdown($text);
-
-        if ($update) {
-          // update the existing entry
-          $SQL = "UPDATE `".self::$config['table_prefix']."mod_gitmd2cms_contents` SET `file_sha`='{$file['file_sha']}', `file_size`='{$file['file_size']}', `content`='$text' WHERE `file_path`='{$file['file_path']}'";
-          $database->query($SQL);
-          if ($database->is_error())
-            $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
-        }
-        else {
-          // add new entry in database
-          $SQL = "INSERT INTO `".self::$config['table_prefix']."mod_gitmd2cms_contents` (`name`,`root`,`file_name`,`file_path`,`file_sha`,`file_size`,`directory`,`title`,`order`,`level`,`content`) ".
-              "VALUES ('{$content_group['repository']['name']}','{$content_group['repository']['root']}','{$file['file_name']}','{$file['file_path']}','{$file['file_sha']}','{$file['file_size']}','{$file['directory']}','{$file['title']}','{$file['order']}','{$file['level']}','$text')";
-          $database->query($SQL);
-          if ($database->is_error())
-            $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
+      // read the files and directories from the first level
+      $cmd = '/repos/'.$content_group['repository']['owner'].'/'.$content_group['repository']['name'].'/contents';
+      $result = array();
+      $this->readDirectory($cmd, self::$repository_root, $result);
+      // check if there are pages to delete...
+      if (count(self::$repository_pages) > 0) {
+        foreach (self::$repository_pages as $link => $sha) {
+          $deletePage->Delete($sha);
         }
       }
+      // create pages in the CMS
+      $this->createPages($content_group);
     }
-    // check if there are pages to delete...
-    if (count($existing_pages) > 0) {
-      $deletePage = new DeletePage();
-      foreach ($existing_pages as $link => $sha) {
-        $deletePage->Delete('/test/test2');
-      }
-    }
-    echo "<pre>";
-    print_r($existing_pages);
-    echo "</pre>";
-
     exit('ok');
   } // action()
 

@@ -47,14 +47,15 @@ $SQL = "CREATE TABLE IF NOT EXISTS `".$table_prefix."mod_gitmd2cms_contents` ( "
     "`name` VARCHAR(255) NOT NULL DEFAULT '', ".
     "`root` VARCHAR(255) NOT NULL DEFAULT '', ".
     "`file_name` VARCHAR(255) NOT NULL DEFAULT '', ".
-    "`file_path` VARCHAR(255) NOT NULL DEFAULT '', ".
+    "`file_path` TEXT NOT NULL, ".
     "`file_sha` VARCHAR(64) NOT NULL DEFAULT '', ".
-    "`file_size` INT(11) NOT NULL DEFAULT '-1', ".
     "`directory` TEXT NOT NULL, ".
     "`title` VARCHAR(255) NOT NULL DEFAULT '', ".
-    "`order` INT(11) NOT NULL DEFAULT '9999', ".
-    "`level` INT(11) NOT NULL DEFAULT '0', ".
-    "`content` LONGTEXT NOT NULL, ".
+    "`description` TEXT NOT NULL DEFAULT '', ".
+    "`keywords` TEXT NOT NULL DEFAULT '', ".
+    "`position` INT(11) NOT NULL DEFAULT '9999', ".
+    "`content_md` LONGTEXT NOT NULL, ".
+    "`content_html` LONGTEXT NOT NULL, ".
     "`timestamp` TIMESTAMP, ".
     "PRIMARY KEY (`id`) ".
     ") ENGINE=MyIsam AUTO_INCREMENT=1 DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci";

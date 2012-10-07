@@ -11,6 +11,9 @@
 
 namespace gitMD2CMS\Pages;
 
+// we need the CMS functions
+require_once WB_PATH.'/framework/functions.php';
+
 class DeletePage {
 
   // error message
@@ -64,6 +67,13 @@ class DeletePage {
     return (bool) !empty(self::$error);
   } // isError
 
+  /**
+   * Use the $page_link to get the $page_id and calls the system function to
+   * delete the desired page
+   *
+   * @param string $page_link
+   * @return boolean
+   */
   public function Delete($page_link) {
     global $database;
 
@@ -74,81 +84,9 @@ class DeletePage {
 
     if (!is_null($page_id) && ($page_id > 0)) {
       // page exists, delete it...
-      require_once WB_PATH.'/framework/functions.php';
       delete_page($page_id);
     }
     return true;
   } // Delete()
+
 } // class DeletePage
-
-/*
-private function deletePage($page_id) {
-  global $database;
-  $dbPages = new db_wb_pages();
-  $where = array();
-  $where[db_wb_pages::field_page_id] = $page_id;
-  $pages = array();
-  if (!$dbPages->sqlSelectRecord($where, $pages)) {
-  		$this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $dbPages->getError()));
-  		return false;
-  }
-  if (sizeof($pages) == 0) {
-  		$this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, sprintf(kit_error_page_not_found, $page_id)));
-  		return false;
-  }
-  $parent = $pages[0][db_wb_pages::field_parent];
-  $link = $pages[0][db_wb_pages::field_link];
-
-  $dbSections = new db_wb_sections();
-  $where = array();
-  $where[db_wb_sections::field_page_id] = $page_id;
-  $sections = array();
-  if (!$dbSections->sqlSelectRecord($where, $sections)) {
-  		$this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $dbSections->getError()));
-  		return false;
-  }
-  foreach ($sections as $section) {
-  		$section_id = $section[db_wb_sections::field_section_id];
-  		// Include the modules delete file if it exists
-  		if(file_exists(WB_PATH.'/modules/'.$section[db_wb_sections::field_module].'/delete.php')) {
-  		  require(WB_PATH.'/modules/'.$section[db_wb_sections::field_module].'/delete.php');
-  		}
-  }
-
-  $where = array();
-  $where[db_wb_pages::field_page_id] = $page_id;
-  if (!$dbPages->sqlDeleteRecord($where)) {
-  		$this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $dbPages->getError()));
-  		return false;
-  }
-
-  $where = array();
-  $where[db_wb_sections::field_page_id] = $page_id;
-  if (!$dbSections->sqlDeleteRecord($where)) {
-  		$this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $dbSections->getError()));
-  		return false;
-  }
-
-  // Include the ordering class or clean-up ordering
-  $order = new order(TABLE_PREFIX.'pages', 'position', 'page_id', 'parent');
-  $order->clean($parent);
-
-  // Unlink the page access file and directory
-  $directory = WB_PATH. PAGES_DIRECTORY. $link;
-  $filename = $directory. PAGE_EXTENSION;
-  $directory .= '/';
-  if (file_exists($filename)) {
-    if (!is_writable(WB_PATH .PAGES_DIRECTORY .'/')) {
-      $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, sprintf(kit_error_delete_access_file, $filename)));
-      return false;
-    }
-    else {
-      unlink($filename);
-      if (file_exists($directory) && rtrim($directory,'/') != WB_PATH .PAGES_DIRECTORY && substr($link, 0, 1) != '.') {
-        rm_full_dir($directory);
-      }
-    }
-  }
-  return true;
-} // deletePage()
-*/
