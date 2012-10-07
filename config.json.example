@@ -1,0 +1,21 @@
+{
+  "table_prefix":"",
+  "content":
+  {
+    "0":
+    {
+      "repository": 
+      {
+        "owner":"hertsch",
+        "name":"md_test",
+        "root":"DE",
+        "media":"media"
+      },
+      "cms": 
+      {
+        "root":"test",
+        "media":"md_test"
+      }
+    }
+  }
+}
