@@ -112,49 +112,17 @@ class AddPage {
     return $text;
   } // unsanitizeText()
 
-  public function Add($name, $title, $parent, $description, $keywords, $text, $html, $md_id, $position,
-      $visibility='public', $admin_groups=array(1), $viewing_groups=array(1)) {
+  public function Add($name, $title, $parent, $description, $keywords, $text, $html, $md_id, $position) {
     global $database;
 
     $admin = new \admin('Pages', 'pages_add', false, false);
     $title = htmlspecialchars($title);
-
-    // ensure that the admin is in the $admin_groups and the $viewing groups
-    if (!in_array(1, $admin_groups)) $admin_groups[] = 1;
-    if (!in_array(1, $viewing_groups)) $viewing_groups[] = 1;
 
     // empty title?
     if (($title == '') || (substr($title, 0, 1) == '.')) {
       $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'The title must contain some text!'));
       return false;
     }
-
-    // check the rights for the page
-    if (!in_array(1, $admin->get_groups_id())) {
-      $admin_perm_ok = false;
-      foreach ($admin_groups as $adm_group) {
-        if (in_array($adm_group, $admin->get_groups_id())) {
-      				$admin_perm_ok = true;
-        }
-      }
-      if ($admin_perm_ok == false) {
-        $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'The given admin rights are insufficient!'));
-        return false;
-      }
-      $admin_perm_ok = false;
-      foreach ($viewing_groups as $view_group) {
-        if (in_array($view_group, $admin->get_groups_id())) {
-      				$admin_perm_ok = true;
-        }
-      }
-      if ($admin_perm_ok == false) {
-        $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'The given viewing rights are insufficient!'));
-        return false;
-      }
-    }
-
-    $admin_groups = implode(',', $admin_groups);
-    $viewing_groups = implode(',', $viewing_groups);
 
     // create the filename
     if ($parent == '0') {
@@ -227,12 +195,12 @@ class AddPage {
         'template' => $template,
         'target' => '_top',
         'position' => $position,
-        'visibility' =>$visibility,
+        'visibility' => 'public', // always public
         'searching' => 1,
         'menu' => 1,
         'language' => $language,
-        'admin_groups' => $admin_groups,
-        'viewing_groups' => $viewing_groups,
+        'admin_groups' => '1', // admin
+        'viewing_groups' => '1', // admin
         'modified_when' => time(),
         'modified_by' => 1
         );

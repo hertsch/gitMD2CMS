@@ -176,9 +176,11 @@ class Access {
    * @param string $cmd
    * @param string $path
    * @param array reference $entries
+   * @param boolean $media_mode read contents from the desired media directory
+   * @param array $allowed_extensions extensions of the allowed media files with a leading dot
    * @return boolean
    */
-  protected static function readDirectory($cmd, $path, &$entries) {
+  protected static function readDirectory($cmd, $path, &$entries, $media_mode=false, $allowed_extensions=array('.jpg','.jpeg','.png','.gif','.pdf')) {
     $result = self::gitGet($cmd.$path);
     if (!isset($result['meta']['status']))
       // got no status information from GitHub
@@ -191,11 +193,23 @@ class Access {
         // read the directory content
         self::readDirectory($cmd, '/'.$entry['path'], $entries);
       }
+      elseif ($media_mode) {
+        // accept all defined media files
+        $read = false;
+        foreach ($allowed_extensions as $extension) {
+          if (false !== stristr($entry['name'], $extension)) {
+            $read = true;
+            break;
+          }
+        }
+        if (!$read) continue;
+        self::readMediaFile($cmd, $entry['path'], $entry['sha']);
+      }
       else {
         // we accept only files with .md extension
         if (false === stristr($entry['name'], '.md', true)) continue;
         // read the MD file to the database
-        self::readMDfile($cmd, $entry['path'], $entry['sha']);
+        self::readMarkdownFile($cmd, $entry['path'], $entry['sha']);
       }
     }
     return true;
@@ -209,7 +223,7 @@ class Access {
    * @param string $sha
    * @return boolean
    */
-  protected static function readMDfile($cmd, $path, $sha) {
+  protected static function readMarkdownFile($cmd, $path, $sha) {
     global $database;
 
     $update = false;
@@ -302,7 +316,28 @@ class Access {
     if ($database->is_error())
       $this->setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, $database->get_error()));
     return true;
-  } // readMDfile()
+  } // readMarkdownFile()
+
+  protected static function readMediaFile($cmd, $path, $sha) {
+    $params = array('format'=>'raw');
+    $content = self::gitGet($cmd.'/'.$path, $params);
+    echo "<pre>";
+    print_r($content);
+    echo "</pre>";
+    if (!isset($content['meta']['status']))
+      // got no status information from GitHub
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Got no status information from GitHub, perhaps an connection error.'));
+    if ($content['meta']['status'] <> 200)
+      // gitHub status is not ok!
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, sprintf('Github error: %s - command: %s', $content['data']['message'], $cmd.'/'.$path)));
+    if (!isset($content['data']['content']))
+      // missing the content
+      self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Got no content from GitHub for: '.$cmd.'/'.$path));
+
+    echo "<pre>";
+    print_r($content);
+    echo "</pre>";
+  } // readMediaFile()
 
   /**
    * Create the HTML WYSIWYG pages from the GitHub data stored in the table
@@ -340,7 +375,6 @@ class Access {
       $page_id = $addPage->Add($name, $md_file['title'], $parent_id, self::unsanitizeText($md_file['description']),
           self::unsanitizeText($md_file['keywords']), self::unsanitizeText($md_file['content_md']),
           self::unsanitizeText($md_file['content_html']), $md_file['id'], $md_file['position']);
-echo "parent: $parent_id -> $page_id<br>";
     }
     return true;
   } // createPages()
@@ -392,6 +426,13 @@ echo "parent: $parent_id -> $page_id<br>";
       $this->createPages($content_group);
       // set the page positions
       $pagePositions->Process($content_group);
+/*
+      // get the media files
+      $media_root = (isset($content_group['repository']['media']) && !empty($content_group['repository']['media'])) ? $content_group['repository']['media'] : '';
+      $media_root = self::removeLeadingAndTrailingChar($media_root, '/');
+      $result = array();
+      $this->readDirectory($cmd, $media_root, $result, true);
+*/
     }
 
     exit('ok');
