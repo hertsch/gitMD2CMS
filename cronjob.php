@@ -9,6 +9,7 @@
  * @license MIT License (MIT) http://www.opensource.org/licenses/MIT
  */
 
+/*
 namespace gitMD2CMS;
 
 use gitMD2CMS\GitHub\Access;
@@ -19,3 +20,11 @@ require_once 'GitHub/Access.php';
 
 $access = new Access();
 $access->action();
+*/
+
+
+require_once 'oauth.php';
+
+$oauth = new githubAuthorize();
+//$oauth->checkAuthentication();
+$oauth->gitAuthendticate();

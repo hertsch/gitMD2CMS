@@ -142,10 +142,17 @@ class Access {
     if (strpos($get, 'https://api.github.com') === 0)
       $command = $get;
     else
-      $command = "https://api.github.com$get?callback=return";
+      $command = "https://api.github.com$get";
+    /*
+    $params['callback'] = 'return';
+    if (isset(self::$config['access_token']) && !empty(self::$config['access_token']))
+      $params['access_token'] = self::$config['access_token'];
     if (!empty($params)) {
-      $command .= '&'.http_build_query($params);
+      //?callback=return
+      $command .= '?'.http_build_query($params);
     }
+    */
+ echo "$command<br>";
     $ch = curl_init($command);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     $result = curl_exec($ch);
@@ -181,7 +188,17 @@ class Access {
    * @return boolean
    */
   protected static function readDirectory($cmd, $path, &$entries, $media_mode=false, $allowed_extensions=array('.jpg','.jpeg','.png','.gif','.pdf')) {
-    $result = self::gitGet($cmd.$path);
+    $cmd = '/orgs/phpManufaktur/repos'; ///Projekt_EM/contents';
+    $params = array(
+        'type' => 'all'
+        );
+    $cmd = '/authorizations';
+    $params = array();
+    $result = self::gitGet($cmd, $params); //.$path);
+echo "<pre>";
+print_r($result);
+echo "</pre>";
+return true;
     if (!isset($result['meta']['status']))
       // got no status information from GitHub
       self::setError(sprintf('[%s - %s] %s', __METHOD__, __LINE__, 'Got no status information from GitHub, perhaps an connection error.'));
